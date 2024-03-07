@@ -6,5 +6,5 @@ apt-get install -y python3 python3-pip curl unzip sudo vim htop
 sudo apt-get install -y libgeos-dev
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r requirement.txt
 pip install --upgrade https://github.com/deepmind/graphcast/archive/master.zip
