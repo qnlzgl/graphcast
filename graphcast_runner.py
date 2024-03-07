@@ -24,19 +24,20 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
+MODEL = "GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz"
 
 # Create the local folder if it doesn't exist
 if not os.path.exists('params'):
     os.makedirs('params')
 
 # Check if the file does not exist locally
-if not os.path.exists('params/GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz'):
+if not os.path.exists(f'params/{MODEL}'):
     gcs_client = storage.Client.create_anonymous_client()
     gcs_bucket = gcs_client.get_bucket("dm_graphcast")
     # Retrieve the blob
-    blob = gcs_bucket.blob('params/GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz')
+    blob = gcs_bucket.blob(f'params/{MODEL}')
     # Download the blob to the local file
-    blob.download_to_filename('params/GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz')
+    blob.download_to_filename(f'params/{MODEL}')
     print(f"Downloaded large model")
 else:
     print(f"Model file already exists.")
@@ -110,7 +111,7 @@ class AssignCoordinates:
 
 # with open(r'params/GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz', 'rb') as model:
 # with open(r'params/GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz', 'rb') as model:
-with open(r'params/GraphCast - ERA5 1979-2017 - resolution 0.25 - pressure levels 37 - mesh 2to6 - precipitation input and output.npz', 'rb') as model:
+with open(f'params/{MODEL}', 'rb') as model:
     ckpt = checkpoint.load(model, graphcast.CheckPoint)
     params = ckpt.params
     state = {}
