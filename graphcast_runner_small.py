@@ -390,8 +390,8 @@ def filter_france(df_predictions):
     return france_related_data
 
 if __name__ == '__main__':
-    start_date = datetime.datetime(2023, 5, 8)
-    end_date = datetime.datetime(2024, 4, 1)
+    start_date = datetime.datetime(2020, 8, 28)
+    end_date = datetime.datetime(2020, 12, 31)
     current_date = start_date
     while current_date <= end_date:
         print(f"Running for : {current_date}")

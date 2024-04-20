@@ -1,2 +1,7 @@
 params/*
 __pycache__/*
+.vscode/*
+downloads/*
+results/*
+predictions/france/*
+predictions/germany/*
