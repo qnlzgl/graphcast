@@ -1,10 +1,7 @@
-# TODO: This file is not ready yet
-
 import cdsapi
 import datetime
 import functools
-from google.cloud import storage
-from graphcast import autoregressive, casting, checkpoint, data_utils as du, graphcast, normalization, rollout
+from graphcast import autoregressive, casting, checkpoint, data_utils as du, graphcast, normalization, rollout, solar_radiation
 import haiku as hk
 import isodate
 import jax
@@ -17,12 +14,38 @@ import pytz
 import scipy
 from typing import Dict
 import xarray
+from tqdm import tqdm
+import logging
+from google.cloud import storage
+import os
+import time
+import xarray as xr
+
+logging.basicConfig(
+    format='%(asctime)s %(levelname)-8s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+MODEL = "GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz"
+
+# Create the local folder if it doesn't exist
+if not os.path.exists('params'):
+    os.makedirs('params')
+
+# Check if the file does not exist locally
+if not os.path.exists(f'params/{MODEL}'):
+    gcs_client = storage.Client.create_anonymous_client()
+    gcs_bucket = gcs_client.get_bucket("dm_graphcast")
+    # Retrieve the blob
+    blob = gcs_bucket.blob(f'params/{MODEL}')
+    # Download the blob to the local file
+    blob.download_to_filename(f'params/{MODEL}')
+    print(f"Downloaded large model")
+else:
+    print(f"Model file already exists.")
+
 
 client = cdsapi.Client()
-
-gcs_client = storage.Client.create_anonymous_client()
-gcs_bucket = gcs_client.get_bucket("dm_graphcast")
-
 singlelevelfields = [
                         '10m_u_component_of_wind',
                         '10m_v_component_of_wind',
@@ -60,11 +83,10 @@ gap = 6
 predictions_steps = 4
 watts_to_joules = 3600
 first_prediction = datetime.datetime(2024, 1, 1, 18, 0)
-lat_range = range(-90, 91, 1)
-lon_range = range(0, 360, 1)
+lat_range = np.arange(-90, 90.25, 0.25).tolist()
+lon_range = np.arange(0, 360, 0.25).tolist()
 
 class AssignCoordinates:
-    
     coordinates = {
                     '2m_temperature': ['batch', 'lon', 'lat', 'time'],
                     'mean_sea_level_pressure': ['batch', 'lon', 'lat', 'time'],
@@ -86,20 +108,20 @@ class AssignCoordinates:
                     'land_sea_mask': ['lon', 'lat'],
                 }
 
-with gcs_bucket.blob(f'params/GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz').open('rb') as model:
+with open(rf'params/{MODEL}', 'rb') as model:
     ckpt = checkpoint.load(model, graphcast.CheckPoint)
     params = ckpt.params
     state = {}
     model_config = ckpt.model_config
     task_config = ckpt.task_config
 
-with open(r'model/stats/diffs_stddev_by_level.nc', 'rb') as f:
+with open(r'stats/diffs_stddev_by_level.nc', 'rb') as f:
     diffs_stddev_by_level = xarray.load_dataset(f).compute()
 
-with open(r'model/stats/mean_by_level.nc', 'rb') as f:
+with open(r'stats/mean_by_level.nc', 'rb') as f:
     mean_by_level = xarray.load_dataset(f).compute()
 
-with open(r'model/stats/stddev_by_level.nc', 'rb') as f:
+with open(r'stats/stddev_by_level.nc', 'rb') as f:
     stddev_by_level = xarray.load_dataset(f).compute()
     
 def construct_wrapped_graphcast(model_config:graphcast.ModelConfig, task_config:graphcast.TaskConfig):
@@ -108,7 +130,6 @@ def construct_wrapped_graphcast(model_config:graphcast.ModelConfig, task_config:
     predictor = casting.Bfloat16Cast(predictor)
     predictor = normalization.InputsAndResiduals(predictor, diffs_stddev_by_level = diffs_stddev_by_level, mean_by_level = mean_by_level, stddev_by_level = stddev_by_level)
     predictor = autoregressive.Predictor(predictor, gradient_checkpointing = True)
-    
     return predictor
 
 @hk.transform_with_state
@@ -176,23 +197,25 @@ def addTimezone(dt, tz = pytz.UTC) -> datetime.datetime:
         return dt.astimezone(tz)
 
 # Getting the single and pressure level values.
-def getSingleAndPressureValues():
-    
-    '''client.retrieve(
-        'reanalysis-era5-single-levels',
-        {
-            'product_type': 'reanalysis',
-            'variable': singlelevelfields,
-            'grid': '1.0/1.0',
-            'year': [2024],
-            'month': [1],
-            'day': [1],
-            'time': ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00'],
-            'format': 'netcdf'
-        },
-        'single-level.nc'
-    )'''
-    singlelevel = xarray.open_dataset('single-level.nc', engine = scipy.__name__).to_dataframe()
+def getSingleAndPressureValues(year, month, day):
+    timestamp_str = datetime.datetime(year, month, day).strftime('%Y%m%d')
+    logging.info("Getting Single and pressure values")
+    if not os.path.exists(f'downloads/graphcast-operational/single-level-{timestamp_str}.nc'):
+        client.retrieve(
+            'reanalysis-era5-single-levels',
+            {
+                'product_type': 'reanalysis',
+                'variable': singlelevelfields,
+                'grid': '1.0/1.0',
+                'year': [year],
+                'month': [month],
+                'day': [day],
+                'time': ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00'],
+                'format': 'netcdf'
+            },
+            f'downloads/graphcast-operational/single-level-{timestamp_str}.nc'
+        )
+    singlelevel = xarray.open_dataset(f'downloads/graphcast-operational/single-level-{timestamp_str}.nc', engine = scipy.__name__).to_dataframe()
     singlelevel = singlelevel.rename(columns = {col:singlelevelfields[ind] for ind, col in enumerate(singlelevel.columns.values.tolist())})
     singlelevel = singlelevel.rename(columns = {'geopotential': 'geopotential_at_surface'})
 
@@ -200,23 +223,23 @@ def getSingleAndPressureValues():
     singlelevel = singlelevel.sort_index()
     singlelevel['total_precipitation_6hr'] = singlelevel.groupby(level=[0, 1])['total_precipitation'].rolling(window = 6, min_periods = 1).sum().reset_index(level=[0, 1], drop=True)
     singlelevel.pop('total_precipitation')
-    
-    '''client.retrieve(
-        'reanalysis-era5-pressure-levels',
-        {
-            'product_type': 'reanalysis',
-            'variable': pressurelevelfields,
-            'grid': '1.0/1.0',
-            'year': [2024],
-            'month': [1],
-            'day': [1],
-            'time': ['06:00', '12:00'],
-            'pressure_level': pressure_levels,
-            'format': 'netcdf'
-        },
-        'pressure-level.nc'
-    )'''
-    pressurelevel = xarray.open_dataset('pressure-level.nc', engine = scipy.__name__).to_dataframe()
+    if not os.path.exists(f'downloads/graphcast-operational/pressure-level-{timestamp_str}.nc'):
+        client.retrieve(
+            'reanalysis-era5-pressure-levels',
+            {
+                'product_type': 'reanalysis',
+                'variable': pressurelevelfields,
+                'grid': '1.0/1.0',
+                'year': [year],
+                'month': [month],
+                'day': [day],
+                'time': ['06:00', '12:00'],
+                'pressure_level': pressure_levels,
+                'format': 'netcdf'
+            },
+            f'downloads/graphcast-operational/pressure-level-{timestamp_str}.nc'
+        )
+    pressurelevel = xarray.open_dataset(f'downloads/graphcast-operational/pressure-level-{timestamp_str}.nc', engine = scipy.__name__).to_dataframe()
     pressurelevel = pressurelevel.rename(columns = {col:pressurelevelfields[ind] for ind, col in enumerate(pressurelevel.columns.values.tolist())})
 
     return singlelevel, pressurelevel
@@ -243,7 +266,7 @@ def addDayProgress(secs, lon:str, data:pd.DataFrame):
 
 def integrateProgress(data:pd.DataFrame):
         
-    for dt in data.index.get_level_values('time').unique():
+    for dt in tqdm(data.index.get_level_values('time').unique(), desc="integrateProgress"):
         seconds_since_epoch = toDatetime(dt).timestamp()
         data = addYearProgress(seconds_since_epoch, data)
         data = addDayProgress(seconds_since_epoch, 'longitude' if 'longitude' in data.index.names else 'lon', data)
@@ -271,7 +294,6 @@ def integrateSolarRadiation(data:pd.DataFrame):
     return pd.merge(data, values, left_index = True, right_index = True, how = 'inner')
 
 def modifyCoordinates(data:xarray.Dataset):
-        
     for var in list(data.data_vars):
         varArray:xarray.DataArray = data[var]
         nonIndices = list(set(list(varArray.coords)).difference(set(AssignCoordinates.coordinates[var])))
@@ -297,6 +319,7 @@ def formatData(data:pd.DataFrame) -> pd.DataFrame:
     return data
 
 def getTargets(dt, data:pd.DataFrame):
+    logging.info("Getting targets")
 
     lat, lon, levels, batch = sorted(data.index.get_level_values('lat').unique().tolist()), sorted(data.index.get_level_values('lon').unique().tolist()), sorted(data.index.get_level_values('level').unique().tolist()), data.index.get_level_values('batch').unique().tolist()
     time = [deltaTime(dt, hours = days * gap) for days in range(predictions_steps)]
@@ -305,6 +328,7 @@ def getTargets(dt, data:pd.DataFrame):
     return target.to_dataframe()
 
 def getForcings(data:pd.DataFrame):
+    logging.info("Getting forcings")
 
     forcingdf = data.reset_index(level = 'level', drop = True).drop(labels = predictionFields, axis = 1)
     forcingdf = pd.DataFrame(index = forcingdf.index.drop_duplicates(keep = 'first'))

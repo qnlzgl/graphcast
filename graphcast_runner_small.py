@@ -108,8 +108,6 @@ class AssignCoordinates:
                 }
 
 with open(rf'params/{MODEL}', 'rb') as model:
-# with open(r'params/GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz', 'rb') as model:
-# with open(f'params/{MODEL}', 'rb') as model:
     ckpt = checkpoint.load(model, graphcast.CheckPoint)
     params = ckpt.params
     state = {}
@@ -201,7 +199,7 @@ def addTimezone(dt, tz = pytz.UTC) -> datetime.datetime:
 def getSingleAndPressureValues(year, month, day):
     timestamp_str = datetime.datetime(year, month, day).strftime('%Y%m%d')
     logging.info("Getting Single and pressure values")
-    if not os.path.exists(f'downloads/single-level-{timestamp_str}.nc'):
+    if not os.path.exists(f'downloads/graphcast-small/single-level-{timestamp_str}.nc'):
         client.retrieve(
             'reanalysis-era5-single-levels',
             {
@@ -214,9 +212,9 @@ def getSingleAndPressureValues(year, month, day):
                 'time': ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00'],
                 'format': 'netcdf'
             },
-            f'downloads/single-level-{timestamp_str}.nc'
+            f'downloads/graphcast-small/single-level-{timestamp_str}.nc'
         )
-    singlelevel = xarray.open_dataset(f'downloads/single-level-{timestamp_str}.nc', engine = scipy.__name__).to_dataframe()
+    singlelevel = xarray.open_dataset(f'downloads/graphcast-small/single-level-{timestamp_str}.nc', engine = scipy.__name__).to_dataframe()
     singlelevel = singlelevel.rename(columns = {col:singlelevelfields[ind] for ind, col in enumerate(singlelevel.columns.values.tolist())})
     singlelevel = singlelevel.rename(columns = {'geopotential': 'geopotential_at_surface'})
 
@@ -224,7 +222,7 @@ def getSingleAndPressureValues(year, month, day):
     singlelevel = singlelevel.sort_index()
     singlelevel['total_precipitation_6hr'] = singlelevel.groupby(level=[0, 1])['total_precipitation'].rolling(window = 6, min_periods = 1).sum().reset_index(level=[0, 1], drop=True)
     singlelevel.pop('total_precipitation')
-    if not os.path.exists(f'downloads/pressure-level-{timestamp_str}.nc'):
+    if not os.path.exists(f'downloads/graphcast-small/pressure-level-{timestamp_str}.nc'):
         client.retrieve(
             'reanalysis-era5-pressure-levels',
             {
@@ -238,9 +236,9 @@ def getSingleAndPressureValues(year, month, day):
                 'pressure_level': pressure_levels,
                 'format': 'netcdf'
             },
-            f'downloads/pressure-level-{timestamp_str}.nc'
+            f'downloads/graphcast-small/pressure-level-{timestamp_str}.nc'
         )
-    pressurelevel = xarray.open_dataset(f'downloads/pressure-level-{timestamp_str}.nc', engine = scipy.__name__).to_dataframe()
+    pressurelevel = xarray.open_dataset(f'downloads/graphcast-small/pressure-level-{timestamp_str}.nc', engine = scipy.__name__).to_dataframe()
     pressurelevel = pressurelevel.rename(columns = {col:pressurelevelfields[ind] for ind, col in enumerate(pressurelevel.columns.values.tolist())})
 
     return singlelevel, pressurelevel
