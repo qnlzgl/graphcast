@@ -54,28 +54,46 @@ if __name__ == '__main__':
 #     date='2024-05-11'
 # )
 
-# from ecmwf.opendata import Client
+from ecmwf.opendata import Client
 
-# client = Client(source="ecmwf", model="ifs", resol="0p25")
-# # Specify the parameters for the request
-# request = {
-#     "date": "20240509",
-#     "time": "00",
-#     "type": "fc",
-#     "step": "0",
-#     "area": "global",
-#     "grid": "0.25",
-#     "dataset": "oper",
-#     "target":"20240511000000-0h-oper-fc.grib2",
-#     "resol": '0p25'
-# }
-# client.retrieve(**request)
+client = Client(source="ecmwf", model="ifs", resol="0p25")
+# Specify the parameters for the request
+request = {
+    "date": "20240511",
+    "time": "00",
+    "param": ["lsm","2t","msl","10u","10v","tp","z"],
+    "grid": [0.25,0.25],
+    "area": [90,0,-90,360],
+    "type": "fc",
+    "stream": "oper", # scda for 6 and 18 time
+    "levtype": "sfc"
+}
+client.retrieve(**request)
 
-# # Define the output path for the GRIB file
-# output_file = '20240511000000-0h-oper-fc.grib2'
+# Define the output path for the GRIB file
+output_file = '20240511000000-0h-oper-fc.grib2'
 
-# # Retrieve the data
-# with open(output_file, "wb") as file:
-#     client.retrieve(request, file)
+# Retrieve the data
+with open(output_file, "wb") as file:
+    client.retrieve(request, file)
 
-# print(f"File downloaded: {output_file}")
+print(f"File downloaded: {output_file}")
+
+
+{
+  "date": 20230110,
+  "time": 0,
+
+  "grid": [
+    0.25,
+    0.25
+  ],
+  "area": [
+    90,
+    0,
+    -90,
+    360
+  ],
+  "type": "fc",
+  "stream": "oper"
+}
