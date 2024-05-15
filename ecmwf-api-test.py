@@ -20,11 +20,17 @@
 #         logging.debug("load source mars %s", kwargs)
 #         return cml.load_source("ecmwf-open-data", **kwargs)
 
+import re
+import sys
+from ai_models.__main__ import main
+if __name__ == '__main__':
+    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+    main()
 
 import climetlab as cml
-source = cml.load_source(
+s1 = cml.load_source(
     "ecmwf-open-data",
-    date="20240512",
+    date="20240513",
     time="00",
     param=["lsm","t2m","msl","u10","v10","tp","z"],   # MARS symbol: ["lsm","2t","msl","10u","10v","tp","z"]
     grid=[0.25,0.25],
@@ -32,10 +38,26 @@ source = cml.load_source(
     type="fc",
     stream="oper", # scda for 6 and 18 time
     levtype="sfc",
-    # target="result.grib2",
     # format="grib2"
 )
+s1.to_xarray().to_netcdf("2024051300-sfc.nc")
 
+s2 = cml.load_source(
+    "ecmwf-open-data",
+    date="20240512",
+    time="18",
+    param=["lsm","t2m","msl","u10","v10","tp","z"],   # MARS symbol: ["lsm","2t","msl","10u","10v","tp","z"]
+    grid=[0.25,0.25],
+    area=[90,0,-90,360],
+    type="fc",
+    stream="scda", # scda for 6 and 18 time
+    levtype="sfc",
+    # format="grib2"
+)
+s2.to_xarray().to_netcdf("2024051218-sfc.nc")
+
+s12 = cml.load_source("multi",[s1, s2])
+s12.to_xarray().to_netcdf("2024051218_2024051300-sfc.nc")
 
 MARS_TO_OPENDATA = {
     "2t": "t2m",
@@ -43,18 +65,34 @@ MARS_TO_OPENDATA = {
     "10v": "v10",
 }
 
-s = cml.load_source("ecmwf-open-data",
+s3 = cml.load_source("ecmwf-open-data",
+    date=20240513,
+    time=0,
+    param=['t', 'z', 'u', 'v', 'w', 'q'],   # MARS symbol: ["lsm","2t","msl","10u","10v","tp","z"]
+    level=[50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000], 
+    grid=[0.25,0.25],
+    area=[90,0,-90,360],
+    type="fc",
+    stream="oper", # scda for 6 and 18 time
+    levtype="pl"
+)
+s3.to_xarray().to_netcdf("2024051300-pl.grib2")
+
+s4 = cml.load_source("ecmwf-open-data",
     date=20240512,
     time=18,
     param=['t', 'z', 'u', 'v', 'w', 'q'],   # MARS symbol: ["lsm","2t","msl","10u","10v","tp","z"]
     level=[50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000], 
-
     grid=[0.25,0.25],
     area=[90,0,-90,360],
     type="fc",
     stream="scda", # scda for 6 and 18 time
     levtype="pl"
 )
+s4.to_xarray().to_netcdf("2024051218-pl.nc")
+
+s34 = cml.load_source("multi",[s1, s2])
+s34.to_xarray().to_netcdf("2024051218_2024051300-pl.nc")
 
 
 
@@ -63,12 +101,7 @@ s = cml.load_source("ecmwf-open-data",
 # for s in source:
 #     cml.plot_map(s)
 
-import re
-import sys
-from ai_models.__main__ import main
-if __name__ == '__main__':
-    sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
-    main()
+
 
 
 
